@@ -66,6 +66,7 @@ async def execute_code(
     kernel_spec=None,
     auth_type="token",
     verify_ssl=True,
+    raise_on_exception=False,
 ):
     hub = JupyterHubAPI(hub_url, auth_type=auth_type, verify_ssl=verify_ssl)
     result_cells = []
@@ -96,6 +97,7 @@ async def execute_code(
                                 api_token=hub.api_token,
                             ),
                             wait=False,
+                            raise_on_exception=raise_on_exception
                         )
 
                     for i, (code, expected_result) in enumerate(cells):
@@ -104,6 +106,7 @@ async def execute_code(
                             code,
                             timeout=kernel_execution_timeout,
                             wait=(not daemonized),
+                            raise_on_exception=raise_on_exception
                         )
                         result_cells.append((code, kernel_result))
                         if daemonized:

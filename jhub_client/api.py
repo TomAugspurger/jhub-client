@@ -13,6 +13,10 @@ from jhub_client import auth
 logger = logging.getLogger(__name__)
 
 
+class CellRuntimeError(RuntimeError):
+    pass
+
+
 class JupyterHubAPI:
     def __init__(self, hub_url, auth_type="token", verify_ssl=True, **kwargs):
         self.hub_url = yarl.URL(hub_url)
@@ -271,7 +275,7 @@ class JupyterKernelAPI:
             "channel": "shell",
         }
 
-    async def send_code(self, username, code, wait=True, timeout=None):
+    async def send_code(self, username, code, wait=True, timeout=None, raise_on_exception=False):
         msg_id = str(uuid.uuid4())
 
         await self.websocket.send_json(
@@ -292,7 +296,9 @@ class JupyterKernelAPI:
             if "parent_header" in msg and msg["parent_header"].get("msg_id") == msg_id:
                 # These are responses to our request
                 if msg["channel"] == "iopub":
-                    if msg["msg_type"] == "execute_result":
+                    if raise_on_exception and msg["msg_type"] == "error":
+                        raise CellRuntimeError("".join(msg["content"]["traceback"]))
+                    elif msg["msg_type"] == "execute_result":
                         return msg["content"]["data"]["text/plain"]
                     elif msg["msg_type"] == "stream":
                         return msg["content"]["text"]
