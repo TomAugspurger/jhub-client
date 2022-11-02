@@ -25,10 +25,15 @@ class JupyterHubAPI:
         self.verify_ssl = verify_ssl
 
         if auth_type == "token":
-            self.api_token = kwargs.get("api_token", os.environ["JUPYTERHUB_API_TOKEN"])
-        elif auth_type == "basic":
-            self.username = kwargs.get("username", os.environ["JUPYTERHUB_USERNAME"])
-            self.password = kwargs.get("password", os.environ["JUPYTERHUB_PASSWORD"])
+            # Only look for the env var if api_token isn't explicitly passed.
+            # Otherwise, we always try to read the env var even if it isn't necessary,
+            # and this can crash if the env var isn't set.
+            self.api_token = (
+                kwargs.get("api_token") or os.environ["JUPYTERHUB_API_TOKEN"]
+            )
+        elif auth_type == "basic" or auth_type == "keycloak":
+            self.username = kwargs.get("username") or os.environ["JUPYTERHUB_USERNAME"]
+            self.password = kwargs.get("password") or os.environ["JUPYTERHUB_PASSWORD"]
 
     async def __aenter__(self):
         if self.auth_type == "token":
@@ -42,6 +47,16 @@ class JupyterHubAPI:
             self.api_token = await self.create_token(self.username)
             await self.session.close()
             logger.debug("upgrading basic authentication to token authentication")
+            self.session = await auth.token_authentication(
+                self.api_token, verify_ssl=self.verify_ssl
+            )
+        elif self.auth_type == "keycloak":
+            self.session = await auth.keycloak_authentication(
+                self.hub_url, self.username, self.password, verify_ssl=self.verify_ssl
+            )
+            self.api_token = await self.create_token(self.username)
+            await self.session.close()
+            logger.debug("upgrading keycloak authentication to token authentication")
             self.session = await auth.token_authentication(
                 self.api_token, verify_ssl=self.verify_ssl
             )
@@ -114,6 +129,27 @@ class JupyterHubAPI:
 
             logger.info(f"pending spawn polling for seconds={total_time:.0f} [s]")
 
+    async def ensure_server_deleted(self, username, timeout):
+        user = await self.get_user(username)
+        if user is None:
+            return  # user doesn't exist so server can't exist
+
+        start_time = time.time()
+        while True:
+            server_status = await self.delete_server(username)
+            if server_status == 204:
+                return
+
+            await asyncio.sleep(5)
+            total_time = time.time() - start_time
+            if total_time > timeout:
+                logger.error(f"jupyterhub server deletion timeout={timeout:.0f} [s]")
+                raise TimeoutError(
+                    f"jupyterhub server deletion timeout={timeout:.0f} [s]"
+                )
+
+            logger.info(f"pending deletion polling for seconds={total_time:.0f} [s]")
+
     async def create_token(self, username, token_name=None):
         token_name = token_name or "jhub-client"
         async with self.session.post(
@@ -139,8 +175,11 @@ class JupyterHubAPI:
                 return True
 
     async def delete_server(self, username):
-        await self.session.delete(self.api_url / "users" / username / "server")
+        response = await self.session.delete(
+            self.api_url / "users" / username / "server"
+        )
         logger.info(f"deleted server for username={username}")
+        return response.status
 
     async def info(self):
         async with self.session.get(self.api_url / "info") as response:

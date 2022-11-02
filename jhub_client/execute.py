@@ -58,6 +58,7 @@ async def execute_code(
     create_user=False,
     delete_user=False,
     server_creation_timeout=60,
+    server_deletion_timeout=60,
     kernel_execution_timeout=60,
     daemonized=False,
     validate=False,
@@ -115,7 +116,7 @@ async def execute_code(
                             )
                         else:
                             logger.debug(
-                                f'kernel execucting cell={i} code=\n{textwrap.indent(code, "   >>> ")}'
+                                f'kernel executing cell={i} code=\n{textwrap.indent(code, "   >>> ")}'
                             )
                             logger.debug(
                                 f'kernel result cell={i} result=\n{textwrap.indent(kernel_result, "   | ")}'
@@ -140,7 +141,9 @@ async def execute_code(
                 if not daemonized:
                     await jupyter.delete_kernel(kernel_id)
             if not daemonized and stop_server:
-                await hub.delete_server(username)
+                await hub.ensure_server_deleted(
+                    username, timeout=server_deletion_timeout
+                )
         finally:
             if delete_user and not daemonized:
                 await hub.delete_user(username)

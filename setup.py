@@ -8,7 +8,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='jhub-client',
-    version='0.1.4',
+    version='0.1.7',
     description='Library and Client for managing, benchmarking, and interacting with jupyterhub',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -33,8 +33,8 @@ setup(
         'dev': [
             'pytest',
             'pytest-asyncio',
-            'black==20.8b1',
-            'flake8==3.8.4',
+            'black==22.3.0',
+            'flake8==4.0.1',
         ],
     },
     entry_points={
